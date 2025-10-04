@@ -3,236 +3,689 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EventEase - Never Miss Another Campus Event</title>
-    
-    <!-- Tailwind CSS CDN -->
+    <title>College Event Hub</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-        }
+        body { font-family: 'Inter', sans-serif; }
+        .modal { display: none; }
+        .modal.active { display: flex; }
     </style>
 </head>
+<body class="bg-gray-100">
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>EventEase</title>
+    <div id="app-container" class="min-h-screen flex flex-col items-center justify-center p-4">
+        <!-- This will be dynamically filled by JavaScript -->
+    </div>
 
-  <!-- Google Fonts - Poppins -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Modals will be injected here -->
+    <div id="modal-container"></div>
 
-  <!-- Tailwind via CDN (quick hackathon way) -->
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.tsx"></script>
-</body>
+    <script type="module">
+        // Firebase Imports
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            createUserWithEmailAndPassword, 
+            signInWithEmailAndPassword, 
+            onAuthStateChanged, 
+            signOut 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            doc, 
+            setDoc, 
+            getDoc, 
+            collection, 
+            addDoc, 
+            getDocs, 
+            updateDoc, 
+            arrayUnion, 
+            arrayRemove,
+            query,
+            where,
+            Timestamp,
+            onSnapshot 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-<body class="bg-[#2C2C3A] text-white min-h-screen">
-    
-    <!-- Navigation -->
-    <nav class="border-b border-gray-700">
-        <div class="max-w-7xl mx-auto px-6 py-4">
-            <div class="flex items-center justify-between">
-                <!-- Logo and Nav Links -->
-                <div class="flex items-center gap-8">
-                    <div class="text-[#F4A5B1] text-lg font-semibold">EventEase</div>
-                    <div class="flex items-center gap-6">
-                        <a href="#" class="text-white hover:text-[#F4A5B1] transition-colors">Home</a>
-                        <div class="relative">
-                            <input
-                                type="text"
-                                placeholder="Search"
-                                class="bg-[#3A3A4A] text-white placeholder-gray-400 px-4 py-2 rounded-lg w-64 outline-none focus:ring-2 focus:ring-[#F4A5B1]/50 transition-all"
-                            />
+        // --- Firebase Configuration ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyDdPJJd5bDCPumIxFrxtj176S1Bozseyjk",
+            authDomain: "eventease-202e2.firebaseapp.com",
+            projectId: "eventease-202e2",
+            storageBucket: "eventease-202e2.appspot.com", // <<< CORRECTED THIS LINE
+            messagingSenderId: "468741602983",
+            appId: "1:468741602983:web:5ae85e55ef8105424be582",
+            measurementId: "G-CT5H4YS8R2"
+        };
+
+        // --- TEMPORARY UPLOAD FEATURE START ---
+        const eventsToUpload = [
+          {
+            "title": "Annual Tech Symposium",
+            "club": "Computer Science Society",
+            "date": "2025-10-20",
+            "time": "09:00",
+            "venue": "Main Auditorium",
+            "category": "Tech",
+            "posterUrl": "https://placehold.co/600x400/7c3aed/ffffff?text=Tech+Symposium",
+            "description": "A full day of talks and workshops from industry leaders on the future of technology, AI, and software development.",
+            "organizerId": "some-organizer-uid"
+          },
+          {
+            "title": "Inter-College Sports Fest",
+            "club": "Sports Committee",
+            "date": "2025-11-05",
+            "time": "10:00",
+            "venue": "College Sports Ground",
+            "category": "Sports",
+            "posterUrl": "https://placehold.co/600x400/22c55e/ffffff?text=Sports+Fest",
+            "description": "Join us for a thrilling day of competition! Events include cricket, football, basketball, and more. Trophies and prizes to be won.",
+            "organizerId": "some-organizer-uid"
+          },
+          {
+            "title": "Symphony: The Music Night",
+            "club": "Cultural Club",
+            "date": "2025-10-28",
+            "time": "18:30",
+            "venue": "Open Air Theatre",
+            "category": "Cultural",
+            "posterUrl": "https://placehold.co/600x400/f97316/ffffff?text=Symphony",
+            "description": "An evening of mesmerizing musical performances from talented artists across various genres. A night to remember!",
+            "organizerId": "some-organizer-uid"
+          }
+        ];
+
+        async function handleBulkUpload() {
+            const uploadButton = document.getElementById('bulk-upload-btn');
+            if (!uploadButton) return;
+
+            uploadButton.disabled = true;
+            uploadButton.textContent = 'Uploading...';
+            
+            const collectionRef = collection(db, 'events');
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (const event of eventsToUpload) {
+                try {
+                    const newEvent = {
+                        ...event,
+                        date: Timestamp.fromDate(new Date(event.date)),
+                        registeredUsers: [],
+                        bookmarkedBy: []
+                    };
+                    await addDoc(collectionRef, newEvent);
+                    successCount++;
+                } catch (error) {
+                    console.error("Error adding event:", event.title, error);
+                    errorCount++;
+                }
+            }
+            
+            const message = `Upload Complete!\nSuccessful: ${successCount}\nFailed: ${errorCount}`;
+            showCustomAlert(message, 'success');
+            uploadButton.textContent = 'Upload Complete';
+            uploadButton.classList.add('hidden'); // Hide after use
+        }
+        // --- TEMPORARY UPLOAD FEATURE END ---
+
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        const appContainer = document.getElementById('app-container');
+        const modalContainer = document.getElementById('modal-container');
+        
+        let currentUserData = null;
+        let unsubscribeUserListener = null;
+
+        // --- State Management ---
+        let events = [];
+        let filteredEvents = [];
+
+        // --- Auth State Change Listener ---
+        onAuthStateChanged(auth, user => {
+            if (unsubscribeUserListener) {
+                unsubscribeUserListener();
+                unsubscribeUserListener = null;
+            }
+            currentUserData = null;
+
+            if (user) {
+                const userDocRef = doc(db, "users", user.uid);
+                unsubscribeUserListener = onSnapshot(userDocRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        currentUserData = { uid: user.uid, ...docSnap.data() };
+                        renderDashboard();
+                    } else {
+                        console.log("User profile not found, waiting for creation...");
+                    }
+                }, (error) => {
+                    console.error("Error listening to user document:", error);
+                    renderLogin();
+                });
+            } else {
+                renderLogin();
+            }
+        });
+        
+        // --- Custom Alert ---
+        function showCustomAlert(message, type = 'error') {
+            const alertId = 'custom-alert-modal';
+            if (document.getElementById(alertId)) return; // Prevent multiple alerts
+
+            const bgColor = type === 'success' ? 'bg-green-100' : 'bg-red-100';
+            const borderColor = type === 'success' ? 'border-green-500' : 'border-red-500';
+            const textColor = type === 'success' ? 'text-green-800' : 'text-red-800';
+
+            const alertHTML = `
+                <div id="${alertId}" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div class="bg-white rounded-lg shadow-xl p-6 w-11/12 md:w-1/3 border-l-4 ${borderColor}">
+                        <div class="flex flex-col">
+                            <p class="${textColor}">${message}</p>
+                            <button onclick="document.getElementById('${alertId}').remove()" class="mt-4 ml-auto bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition">OK</button>
                         </div>
                     </div>
                 </div>
-                
-                <!-- Right Nav Items -->
-                <div class="flex items-center gap-6">
-                    <a href="#" class="text-gray-300 hover:text-white transition-colors">Browse Events</a>
-                    <a href="#" class="text-gray-300 hover:text-white transition-colors">My Events</a>
-                    <button class="text-white hover:text-[#F4A5B1] transition-colors">
-                        <!-- Bell Icon -->
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path>
-                            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
-                        </svg>
-                    </button>
-                    <button class="text-white hover:text-[#F4A5B1] transition-colors">
-                        <!-- User Icon -->
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path>
-                            <circle cx="12" cy="7" r="4"></circle>
-                        </svg>
-                    </button>
+            `;
+            modalContainer.innerHTML = alertHTML;
+        }
+
+        // --- HTML Render Functions ---
+        function renderLogin(isOrganizerLogin = false) {
+            const loginType = isOrganizerLogin ? 'Organizer' : 'Student';
+            const switchType = isOrganizerLogin ? 'Student' : 'Organizer';
+            
+            appContainer.innerHTML = `
+                <div class="w-full max-w-md bg-white p-8 rounded-xl shadow-lg">
+                    <h2 class="text-3xl font-bold text-center text-gray-800 mb-2">Welcome, ${loginType}</h2>
+                    <p class="text-center text-gray-500 mb-6">Sign in to continue</p>
+                    <form id="login-form">
+                        <div class="mb-4">
+                            <label for="email" class="block text-gray-700 text-sm font-medium mb-2">Email Address</label>
+                            <input type="email" id="email" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-600" required>
+                        </div>
+                        <div class="mb-6">
+                            <label for="password" class="block text-gray-700 text-sm font-medium mb-2">Password</label>
+                            <input type="password" id="password" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-600" required>
+                        </div>
+                        <button type="submit" class="w-full bg-purple-600 text-white py-2 rounded-md hover:bg-purple-700 transition duration-300">Sign In</button>
+                    </form>
+                    <p class="text-center text-sm text-gray-600 mt-4">
+                        Don't have an account? <a href="#" id="signup-link" class="text-purple-600 font-medium hover:underline">Create an account</a>
+                    </p>
+                    <p class="text-center text-sm text-gray-600 mt-2">
+                        <a href="#" id="switch-login" class="text-blue-600 font-medium hover:underline">Switch to ${switchType} Login</a>
+                    </p>
                 </div>
-            </div>
-        </div>
-    </nav>
-
-    <!-- Hero Section -->
-    <section class="max-w-4xl mx-auto px-6 py-20 text-center">
-        <div class="inline-block bg-[#4A4A5A] text-gray-200 px-4 py-2 rounded-full mb-6">
-            Your Campus, Your Events
-        </div>
-        
-        <h1 class="text-5xl font-bold mb-6">
-            <span class="italic text-[#F4A5B1]">Never Miss Another Campus Event</span>
-        </h1>
-        
-        <p class="text-gray-300 text-lg mb-8 max-w-2xl mx-auto">
-            Discover, register, and get reminders for all the amazing events happening on campus. From career fairs to concerts, we've got you covered.
-        </p>
-        
-        <div class="flex items-center justify-center gap-4 flex-wrap">
-            <button class="bg-[#F4A5B1] text-[#2C2C3A] px-6 py-3 rounded-full hover:bg-[#F2B5C0] transition-colors flex items-center gap-2 font-medium">
-                Browse all events
-                <!-- Arrow Right Icon -->
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M5 12h14"></path>
-                    <path d="m12 5 7 7-7 7"></path>
-                </svg>
-            </button>
-            <button class="bg-[#F4A5B1] text-[#2C2C3A] px-6 py-3 rounded-full hover:bg-[#F2B5C0] transition-colors font-medium">
-                Create an event
-            </button>
-        </div>
-    </section>
-
-    <!-- Features Section -->
-    <section class="max-w-6xl mx-auto px-6 py-16">
-        <h2 class="text-center text-3xl font-bold mb-12">Everything you need in one place.</h2>
-        
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <!-- Discover Events Card -->
-            <div class="bg-[#3A3A4A] p-8 rounded-xl hover:bg-[#404050] transition-colors">
-                <div class="w-12 h-12 bg-[#4A4A5A] rounded-lg flex items-center justify-center mb-4">
-                    <!-- Calendar Icon -->
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                        <line x1="16" y1="2" x2="16" y2="6"></line>
-                        <line x1="8" y1="2" x2="8" y2="6"></line>
-                        <line x1="3" y1="10" x2="21" y2="10"></line>
-                    </svg>
-                </div>
-                <h3 class="text-[#F4A5B1] text-xl font-semibold mb-3">Discover events</h3>
-                <p class="text-gray-300">
-                    Browse all campus events in one place. Filter by category, date, or search for specific interests.
-                </p>
-            </div>
-
-            <!-- Smart Reminders Card -->
-            <div class="bg-[#3A3A4A] p-8 rounded-xl hover:bg-[#404050] transition-colors">
-                <div class="w-12 h-12 bg-[#4A4A5A] rounded-lg flex items-center justify-center mb-4">
-                    <!-- Bell Ring Icon -->
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white">
-                        <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path>
-                        <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
-                        <path d="M4 2C2.8 3.7 2 5.7 2 8"></path>
-                        <path d="M22 8c0-2.3-.8-4.3-2-6"></path>
-                    </svg>
-                </div>
-                <h3 class="text-[#F4A5B1] text-xl font-semibold mb-3">Smart Reminders</h3>
-                <p class="text-gray-300">
-                    Get personalized notifications before events start. Never forget about that important workshop again.
-                </p>
-            </div>
-
-            <!-- Easy Registration Card -->
-            <div class="bg-[#3A3A4A] p-8 rounded-xl hover:bg-[#404050] transition-colors">
-                <div class="w-12 h-12 bg-[#4A4A5A] rounded-lg flex items-center justify-center mb-4">
-                    <!-- User Plus Icon -->
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white">
-                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
-                        <circle cx="9" cy="7" r="4"></circle>
-                        <line x1="19" y1="8" x2="19" y2="14"></line>
-                        <line x1="22" y1="11" x2="16" y2="11"></line>
-                    </svg>
-                </div>
-                <h3 class="text-[#F4A5B1] text-xl font-semibold mb-3">Easy Registration</h3>
-                <p class="text-gray-300">
-                    Register for events with just a few clicks. Track your registrations and manage your schedule.
-                </p>
-            </div>
-        </div>
-    </section>
-
-    <!-- CTA Section -->
-    <section class="max-w-4xl mx-auto px-6 py-20 text-center">
-        <h2 class="text-[#F4A5B1] text-4xl font-bold mb-4">Ready to get started?</h2>
-        <p class="text-gray-300 text-lg mb-8">
-            Join thousands of students who never miss out on campus events.
-        </p>
-        <button class="bg-[#4A4A5A] text-white px-8 py-3 rounded-lg hover:bg-[#5A5A6A] transition-colors font-medium">
-            Explore events now
-        </button>
-    </section>
-
-    <!-- Footer -->
-    <footer class="border-t border-gray-700 py-8">
-        <div class="max-w-7xl mx-auto px-6 text-center text-gray-400">
-            © 2025 EventEase. All Rights Reserved
-        </div>
-    </footer>
-
-    <div id="root"></div>
-<script type="module" src="/src/main.tsx"></script>
-
-
-    <script>
-        // Add smooth scrolling for anchor links
-        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-            anchor.addEventListener('click', function (e) {
+            `;
+            document.getElementById('login-form').addEventListener('submit', e => handleLogin(e, isOrganizerLogin));
+            document.getElementById('signup-link').addEventListener('click', e => {
                 e.preventDefault();
-                const target = document.querySelector(this.getAttribute('href'));
-                if (target) {
-                    target.scrollIntoView({
-                        behavior: 'smooth'
-                    });
-                }
+                renderSignUp(isOrganizerLogin);
             });
-        });
-
-        // Add interactive feedback for buttons
-        document.querySelectorAll('button').forEach(button => {
-            button.addEventListener('click', function(e) {
-                // Add a ripple effect or handle click
-                console.log('Button clicked:', this.textContent.trim());
-            });
-        });
-
-        // Search functionality
-        const searchInput = document.querySelector('input[type="text"]');
-        if (searchInput) {
-            searchInput.addEventListener('input', function(e) {
-                console.log('Search query:', e.target.value);
-                // You can add search functionality here
+            document.getElementById('switch-login').addEventListener('click', e => {
+                e.preventDefault();
+                renderLogin(!isOrganizerLogin);
             });
         }
+
+        function renderSignUp(isOrganizerSignUp = false) {
+            const userType = isOrganizerSignUp ? 'Organizer' : 'Student';
+            appContainer.innerHTML = `
+                <div class="w-full max-w-md bg-white p-8 rounded-xl shadow-lg">
+                    <h2 class="text-3xl font-bold text-center text-gray-800 mb-2">Create ${userType} Account</h2>
+                    <p class="text-center text-gray-500 mb-6">Let's get you started!</p>
+                    <form id="signup-form">
+                        <div class="mb-4">
+                            <label for="name" class="block text-gray-700 text-sm font-medium mb-2">Full Name</label>
+                            <input type="text" id="name" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-600" required>
+                        </div>
+                        <div class="mb-4">
+                            <label for="email" class="block text-gray-700 text-sm font-medium mb-2">Email Address</label>
+                            <input type="email" id="email" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-600" required>
+                        </div>
+                        <div class="mb-6">
+                            <label for="password" class="block text-gray-700 text-sm font-medium mb-2">Password</glabel>
+                            <input type="password" id="password" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-600" required>
+                        </div>
+                        <button type="submit" class="w-full bg-purple-600 text-white py-2 rounded-md hover:bg-purple-700 transition duration-300">Sign Up</button>
+                    </form>
+                    <p class="text-center text-sm text-gray-600 mt-4">
+                        Already have an account? <a href="#" id="login-link" class="text-purple-600 font-medium hover:underline">Sign In</a>
+                    </p>
+                </div>
+            `;
+            document.getElementById('signup-form').addEventListener('submit', e => handleSignUp(e, isOrganizerSignUp));
+            document.getElementById('login-link').addEventListener('click', e => {
+                e.preventDefault();
+                renderLogin(isOrganizerSignUp);
+            });
+        }
+        
+        async function renderDashboard() {
+            if (!currentUserData) {
+                appContainer.innerHTML = `<div class="text-center"><div class="text-xl">Loading user data...</div></div>`;
+                return;
+            }
+            
+            await fetchEvents();
+            
+            const isAdmin = currentUserData.role === 'organizer';
+            const adminButton = isAdmin ? `
+                <button id="admin-panel-btn" class="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 transition">Admin Panel</button>
+            ` : '';
+
+            const uploadButtonHTML = eventsToUpload && eventsToUpload.length > 0 ? `
+                <button id="bulk-upload-btn" class="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 transition ml-2">
+                    ONE-TIME UPLOAD EVENTS
+                </button>
+            ` : '';
+            
+            appContainer.innerHTML = `
+                <div class="w-full max-w-6xl mx-auto">
+                    <header class="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-md">
+                        <h1 class="text-2xl md:text-3xl font-bold text-gray-800">Upcoming Events</h1>
+                        <div class="flex items-center space-x-4">
+                            ${adminButton}
+                            ${uploadButtonHTML}
+                            <button id="logout-btn" class="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 transition">Logout</button>
+                        </div>
+                    </header>
+
+                    <!-- Filters -->
+                    <div class="bg-white p-4 rounded-xl shadow-md mb-6 flex flex-col md:flex-row gap-4 items-center">
+                        <input type="text" id="filter-club" placeholder="Filter by Club..." class="w-full md:w-1/4 px-3 py-2 border rounded-md">
+                        <input type="date" id="filter-date" class="w-full md:w-1/4 px-3 py-2 border rounded-md">
+                        <select id="filter-category" class="w-full md:w-1/4 px-3 py-2 border rounded-md">
+                            <option value="">All Categories</option>
+                            <option value="Tech">Tech</option>
+                            <option value="Cultural">Cultural</option>
+                            <option value="Sports">Sports</option>
+                            <option value="Academic">Academic</option>
+                        </select>
+                        <button id="apply-filters" class="w-full md:w-auto bg-purple-600 text-white px-6 py-2 rounded-md hover:bg-purple-700">Apply</button>
+                         <button id="clear-filters" class="w-full md:w-auto bg-gray-500 text-white px-6 py-2 rounded-md hover:bg-gray-600">Clear</button>
+                    </div>
+
+                    <main id="event-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <!-- Event cards will be inserted here -->
+                    </main>
+                </div>
+            `;
+            
+            renderEventCards();
+            
+            document.getElementById('logout-btn').addEventListener('click', handleLogout);
+            document.getElementById('apply-filters').addEventListener('click', applyFilters);
+            document.getElementById('clear-filters').addEventListener('click', clearFilters);
+            
+            if(isAdmin) {
+                document.getElementById('admin-panel-btn').addEventListener('click', renderAdminPanel);
+            }
+            
+            const uploadButton = document.getElementById('bulk-upload-btn');
+            if (uploadButton) {
+                uploadButton.addEventListener('click', handleBulkUpload);
+            }
+        }
+        
+        function renderEventCards() {
+            const eventGrid = document.getElementById('event-grid');
+            if (!eventGrid) return;
+            
+            if (filteredEvents.length === 0) {
+                eventGrid.innerHTML = `<p class="text-gray-600 col-span-full text-center">No events found that match your criteria.</p>`;
+                return;
+            }
+
+            eventGrid.innerHTML = filteredEvents.map(event => {
+                const isRegistered = event.registeredUsers.includes(currentUserData.uid);
+                const isBookmarked = event.bookmarkedBy && event.bookmarkedBy.includes(currentUserData.uid);
+                const eventDate = event.date.toDate();
+                const isPast = eventDate < new Date().setHours(0,0,0,0);
+
+                return `
+                <div class="bg-white rounded-xl shadow-lg overflow-hidden transition-transform transform hover:-translate-y-1">
+                    <img src="${event.posterUrl}" alt="${event.title} Poster" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h3 class="text-xl font-bold text-gray-800">${event.title}</h3>
+                        <p class="text-sm text-gray-500 mb-2">${event.club}</p>
+                        <div class="text-sm text-gray-700 space-y-1 mb-4">
+                           <p><strong>Date:</strong> ${eventDate.toLocaleDateString()}</p>
+                           <p><strong>Time:</strong> ${event.time}</p>
+                           <p><strong>Venue:</strong> ${event.venue}</p>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <button class="view-details-btn text-purple-600 font-medium hover:underline" data-id="${event.id}">View Details</button>
+                            <div class="flex items-center space-x-2">
+                                <button class="bookmark-btn p-2 rounded-full hover:bg-gray-200" data-id="${event.id}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 ${isBookmarked ? 'text-yellow-500 fill-current' : 'text-gray-400'}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                                    </svg>
+                                </button>
+                                ${ isPast ? 
+                                    `<span class="text-sm font-medium text-gray-500 px-3 py-1.5 rounded-md bg-gray-200">Event Over</span>` :
+                                    isRegistered ?
+                                    `<button class="register-btn bg-gray-400 text-white px-3 py-1.5 rounded-md text-sm" data-id="${event.id}" disabled>Registered</button>` :
+                                    `<button class="register-btn bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-md text-sm transition" data-id="${event.id}">Register</button>`
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+            
+            // Add event listeners for new buttons
+            document.querySelectorAll('.view-details-btn').forEach(btn => btn.addEventListener('click', (e) => renderEventDetails(e.currentTarget.dataset.id)));
+            document.querySelectorAll('.register-btn').forEach(btn => btn.addEventListener('click', (e) => handleRegistration(e.currentTarget.dataset.id, e.currentTarget)));
+            document.querySelectorAll('.bookmark-btn').forEach(btn => btn.addEventListener('click', (e) => handleBookmark(e.currentTarget.dataset.id)));
+        }
+        
+        function renderAdminPanel() {
+            const modalId = 'admin-modal';
+            const modalHTML = `
+                <div id="${modalId}" class="modal active fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div class="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                        <div class="p-6">
+                            <div class="flex justify-between items-center mb-4">
+                                <h2 class="text-2xl font-bold text-gray-800">Add New Event</h2>
+                                <button id="close-admin-modal" class="text-gray-500 hover:text-gray-800">&times;</button>
+                            </div>
+                            <form id="add-event-form">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="event-title" class="block text-sm font-medium text-gray-700">Event Title</label>
+                                        <input type="text" id="event-title" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500">
+                                    </div>
+                                     <div>
+                                        <label for="event-club" class="block text-sm font-medium text-gray-700">Club/Organizer</label>
+                                        <input type="text" id="event-club" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500">
+                                    </div>
+                                    <div>
+                                        <label for="event-date" class="block text-sm font-medium text-gray-700">Date</label>
+                                        <input type="date" id="event-date" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500">
+                                    </div>
+                                    <div>
+                                        <label for="event-time" class="block text-sm font-medium text-gray-700">Time</label>
+                                        <input type="time" id="event-time" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500">
+                                    </div>
+                                    <div>
+                                        <label for="event-venue" class="block text-sm font-medium text-gray-700">Venue</label>
+                                        <input type="text" id="event-venue" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500">
+                                    </div>
+                                    <div>
+                                        <label for="event-category" class="block text-sm font-medium text-gray-700">Category</label>
+                                        <select id="event-category" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500">
+                                            <option>Tech</option>
+                                            <option>Cultural</option>
+                                            <option>Sports</option>
+                                            <option>Academic</option>
+                                        </select>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <label for="event-poster" class="block text-sm font-medium text-gray-700">Poster Image URL</label>
+                                        <input type="url" id="event-poster" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500">
+                                    </div>
+                                     <div class="md:col-span-2">
+                                        <label for="event-description" class="block text-sm font-medium text-gray-700">Description</label>
+                                        <textarea id="event-description" rows="4" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-purple-500 focus:border-purple-500"></textarea>
+                                    </div>
+                                </div>
+                                <div class="mt-6 flex justify-end">
+                                    <button type="button" id="cancel-add-event" class="mr-2 bg-gray-200 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-300">Cancel</button>
+                                    <button type="submit" class="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700">Add Event</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            `;
+            modalContainer.innerHTML = modalHTML;
+            const modalElement = document.getElementById(modalId);
+            const closeBtn = document.getElementById('close-admin-modal');
+            const cancelBtn = document.getElementById('cancel-add-event');
+            
+            const closeModal = () => modalElement.remove();
+
+            closeBtn.addEventListener('click', closeModal);
+            cancelBtn.addEventListener('click', closeModal);
+            document.getElementById('add-event-form').addEventListener('submit', handleAddEvent);
+        }
+        
+        function renderEventDetails(eventId) {
+            const event = events.find(e => e.id === eventId);
+            if (!event) return;
+            const eventDate = event.date.toDate();
+
+            const modalId = 'details-modal';
+            const modalHTML = `
+                <div id="${modalId}" class="modal active fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col md:flex-row">
+                        <img src="${event.posterUrl}" alt="${event.title}" class="w-full md:w-1/3 h-64 md:h-auto object-cover rounded-l-lg">
+                        <div class="p-6 flex flex-col flex-grow overflow-y-auto">
+                            <div class="flex justify-between items-start">
+                                <h2 class="text-2xl font-bold text-gray-800 mb-2">${event.title}</h2>
+                                <button id="close-details-modal" class="text-2xl text-gray-500 hover:text-gray-800">&times;</button>
+                            </div>
+                            <p class="text-md text-gray-600 font-medium mb-4">${event.club}</p>
+                            <div class="space-y-2 text-gray-700 mb-4">
+                                <p><strong>Date & Time:</strong> ${eventDate.toLocaleDateString()} at ${event.time}</p>
+                                <p><strong>Venue:</strong> ${event.venue}</p>
+                                <p><strong>Category:</strong> ${event.category}</p>
+                            </div>
+                            <p class="text-gray-600 flex-grow">${event.description}</p>
+                            <div class="mt-4 text-right">
+                                <button id="details-close-btn" class="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            modalContainer.innerHTML = modalHTML;
+            const modalElement = document.getElementById(modalId);
+            const closeModal = () => modalElement.remove();
+
+            document.getElementById('close-details-modal').addEventListener('click', closeModal);
+            document.getElementById('details-close-btn').addEventListener('click', closeModal);
+        }
+
+
+        // --- Event Handlers & Logic ---
+        async function handleLogin(e, isOrganizer) {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                const userDoc = await getDoc(doc(db, "users", userCredential.user.uid));
+                if (!userDoc.exists()) {
+                    showCustomAlert("User profile not found. Please contact support.");
+                    signOut(auth);
+                    return;
+                }
+                const userRole = userDoc.data().role;
+                const expectedRole = isOrganizer ? 'organizer' : 'student';
+
+                if (userRole !== expectedRole) {
+                    showCustomAlert(`Incorrect login type. Please use the ${userRole} login.`);
+                    signOut(auth);
+                    return;
+                }
+                // Auth state change will handle rendering the dashboard
+            } catch (error) {
+                console.error("Login Error:", error);
+                showCustomAlert(error.message);
+            }
+        }
+        
+        async function handleSignUp(e, isOrganizer) {
+            e.preventDefault();
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const role = isOrganizer ? 'organizer' : 'student';
+
+            try {
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                const user = userCredential.user;
+
+                // Create a user profile document in Firestore
+                await setDoc(doc(db, "users", user.uid), {
+                    name: name,
+                    email: email,
+                    role: role,
+                    registeredEvents: [],
+                    bookmarkedEvents: []
+                });
+                // Auth state change will handle rendering dashboard
+            } catch (error) {
+                console.error("Sign Up Error:", error);
+                showCustomAlert(error.message);
+            }
+        }
+
+        async function handleLogout() {
+            await signOut(auth);
+            // Auth state change listener will handle re-rendering the login page
+        }
+        
+        async function handleAddEvent(e) {
+            e.preventDefault();
+            const newEvent = {
+                title: document.getElementById('event-title').value,
+                club: document.getElementById('event-club').value,
+                date: Timestamp.fromDate(new Date(document.getElementById('event-date').value)),
+                time: document.getElementById('event-time').value,
+                venue: document.getElementById('event-venue').value,
+                category: document.getElementById('event-category').value,
+                posterUrl: document.getElementById('event-poster').value,
+                description: document.getElementById('event-description').value,
+                organizerId: currentUserData.uid,
+                registeredUsers: [],
+                bookmarkedBy: []
+            };
+
+            try {
+                await addDoc(collection(db, "events"), newEvent);
+                document.getElementById('admin-modal').remove();
+                showCustomAlert('Event added successfully!', 'success');
+                renderDashboard(); // Re-render to show the new event
+            } catch (error) {
+                console.error("Error adding event: ", error);
+                showCustomAlert(error.message);
+            }
+        }
+
+        async function handleRegistration(eventId, button) {
+            if (!currentUserData) return;
+            
+            button.disabled = true;
+            const eventDocRef = doc(db, "events", eventId);
+            
+            try {
+                await updateDoc(eventDocRef, {
+                    registeredUsers: arrayUnion(currentUserData.uid)
+                });
+                // Optimistically update UI
+                button.textContent = 'Registered';
+                button.classList.remove('bg-green-500', 'hover:bg-green-600');
+                button.classList.add('bg-gray-400');
+                // Re-fetch events to get latest data
+                await fetchEvents();
+                applyFilters();
+
+            } catch (error) {
+                console.error("Error registering for event:", error);
+                showCustomAlert("Registration failed. Please try again.");
+                button.disabled = false;
+            }
+        }
+
+        async function handleBookmark(eventId) {
+            if (!currentUserData) return;
+            const eventDocRef = doc(db, "events", eventId);
+            const event = events.find(e => e.id === eventId);
+            if (!event) return;
+
+            const isCurrentlyBookmarked = event.bookmarkedBy && event.bookmarkedBy.includes(currentUserData.uid);
+            const updateAction = isCurrentlyBookmarked ? arrayRemove : arrayUnion;
+
+            try {
+                await updateDoc(eventDocRef, {
+                    bookmarkedBy: updateAction(currentUserData.uid)
+                });
+                // Re-fetch and re-render to update the bookmark icon state
+                await fetchEvents();
+                applyFilters();
+
+            } catch(error) {
+                console.error("Error updating bookmark:", error);
+                showCustomAlert("Could not update bookmark. Please try again.");
+            }
+        }
+
+        async function fetchEvents() {
+            try {
+                const querySnapshot = await getDocs(collection(db, "events"));
+                events = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                applyFilters(); // Apply default filters (upcoming events)
+            } catch (error) {
+                console.error("Error fetching events:", error);
+                showCustomAlert("Could not load events.");
+            }
+        }
+        
+        function applyFilters() {
+            const clubFilter = document.getElementById('filter-club')?.value.toLowerCase() || '';
+            const dateFilter = document.getElementById('filter-date')?.value || '';
+            const categoryFilter = document.getElementById('filter-category')?.value || '';
+
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); 
+            
+            filteredEvents = events.filter(event => {
+                const eventDate = event.date.toDate();
+                eventDate.setHours(0, 0, 0, 0);
+
+                // Default filter: show only upcoming events unless a specific date is chosen
+                const isUpcoming = eventDate >= today;
+                if (!dateFilter && !isUpcoming) {
+                    return false;
+                }
+
+                const matchesClub = clubFilter ? event.club.toLowerCase().includes(clubFilter) : true;
+                const matchesCategory = categoryFilter ? event.category === categoryFilter : true;
+                
+                let matchesDate = true;
+                if (dateFilter) {
+                    const filterDate = new Date(dateFilter);
+                    filterDate.setMinutes(filterDate.getMinutes() + filterDate.getTimezoneOffset()); // Adjust for timezone
+                    filterDate.setHours(0, 0, 0, 0);
+                    matchesDate = eventDate.getTime() === filterDate.getTime();
+                }
+
+                return matchesClub && matchesCategory && matchesDate;
+            });
+            
+            filteredEvents.sort((a,b) => a.date.toMillis() - b.date.toMillis());
+            
+            renderEventCards();
+        }
+
+        function clearFilters() {
+            document.getElementById('filter-club').value = '';
+            document.getElementById('filter-date').value = '';
+            document.getElementById('filter-category').value = '';
+            applyFilters();
+        }
+
     </script>
-    <!-- Google Fonts - Poppins -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-
-<!-- Tailwind CSS (CDN for now) -->
-<script src="https://cdn.tailwindcss.com"></script>
-
-
 </body>
 </html>
-
 
