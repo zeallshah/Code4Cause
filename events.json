@@ -1,0 +1,35 @@
+[
+  {
+    "title": "Annual Tech Symposium",
+    "club": "Computer Science Society",
+    "date": "2025-10-20",
+    "time": "09:00",
+    "venue": "Main Auditorium",
+    "category": "Tech",
+    "posterUrl": "https://placehold.co/600x400/7c3aed/ffffff?text=Tech+Symposium",
+    "description": "A full day of talks and workshops from industry leaders on the future of technology, AI, and software development.",
+    "organizerId": "some-organizer-uid"
+  },
+  {
+    "title": "Inter-College Sports Fest",
+    "club": "Sports Committee",
+    "date": "2025-11-05",
+    "time": "10:00",
+    "venue": "College Sports Ground",
+    "category": "Sports",
+    "posterUrl": "https://placehold.co/600x400/22c55e/ffffff?text=Sports+Fest",
+    "description": "Join us for a thrilling day of competition! Events include cricket, football, basketball, and more. Trophies and prizes to be won.",
+    "organizerId": "some-organizer-uid"
+  },
+  {
+    "title": "Symphony: The Music Night",
+    "club": "Cultural Club",
+    "date": "2025-10-28",
+    "time": "18:30",
+    "venue": "Open Air Theatre",
+    "category": "Cultural",
+    "posterUrl": "https://placehold.co/600x400/f97316/ffffff?text=Symphony",
+    "description": "An evening of mesmerizing musical performances from talented artists across various genres. A night to remember!",
+    "organizerId": "some-organizer-uid"
+  }
+]
